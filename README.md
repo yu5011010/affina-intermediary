@@ -15,6 +15,25 @@ npm run dev
 - ポート: **3001**（EC は 3000）
 - URL: http://localhost:3001
 
+## Vercel（デプロイ済み）
+
+本リポジトリは Vercel に接続済みです。
+
+- **本番 URL**: https://intermediary.vercel.app  
+- 購入通知エンドポイント: `https://intermediary.vercel.app/api/conversions`
+
+[Vercel ダッシュボード](https://vercel.com/dashboard) → 該当プロジェクト → **Settings → Environment Variables** に以下を設定してください。
+
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `AFFINA_INBOUND_SECRET` | はい | EC の `AFFINA_API_SECRET` と**同じ値**。未設定のとき `/api/conversions` は 503 になります。 |
+
+EC（Vercel など）側では `AFFINA_NOTIFICATION_URL` を  
+`https://intermediary.vercel.app/api/conversions`  
+にすると、チェックアウトから仲介へ通知できます。
+
+**注意**: サンプルの広告主 `siteUrl` は `http://localhost:3000` です。本番 EC とアフィリンクをつなぐときは、広告主ダッシュボードで **サイト URL を本番の EC オリジン**に変更してください。
+
 ### EC からの購入通知 API
 
 - `POST /api/conversions` … `Authorization: Bearer {AFFINA_INBOUND_SECRET}`、JSON body の項目は **EC（Affina Shop）リポジトリ**の `docs/ER_DIAGRAM.md`（通知 API 契約）を参照
