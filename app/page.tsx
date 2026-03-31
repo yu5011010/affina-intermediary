@@ -13,13 +13,14 @@ export default function HomePage() {
 
   const refreshUser = useCallback(() => {
     setUser(getCurrentUser());
-    setHasDemoAccounts(
-      Boolean(storage.getUserById(SAMPLE_IDS.userAdvertiser))
-    );
+    void (async () => {
+      const u = await storage.getUserById(SAMPLE_IDS.userAdvertiser);
+      setHasDemoAccounts(Boolean(u));
+    })();
   }, []);
 
   useEffect(() => {
-    refreshUser();
+    queueMicrotask(() => refreshUser());
     window.addEventListener("affina-user-changed", refreshUser);
     return () => window.removeEventListener("affina-user-changed", refreshUser);
   }, [refreshUser]);
@@ -96,22 +97,22 @@ export default function HomePage() {
                 サンプルデータで試す
               </h3>
               <p className="mb-4 text-sm text-slate-600">
-                初回アクセス時にダミーの広告主・<strong>アフィ2名</strong>・案件5件・成果4件が入ります（localStorage
-                が空のときのみ）。パスワードはありません。EC 連携は{" "}
-                <code className="rounded bg-white px-1 text-xs">
-                  supabase db reset
-                </code>{" "}
-                後の商品 UUID と一致します。
+                初回アクセス時に<strong>広告主1・アフィ1</strong>と、EC
+                の先頭3商品に対応する<strong>案件3件</strong>だけが入ります（成果のダミーはなし。ユーザー表が空のときのみ）。パスワードはありません。
               </p>
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={() => {
-                    const u = storage.getUserById(SAMPLE_IDS.userAdvertiser);
-                    if (u) {
-                      setCurrentUser(u);
-                      router.push("/advertisers/dashboard");
-                    }
+                    void (async () => {
+                      const u = await storage.getUserById(
+                        SAMPLE_IDS.userAdvertiser,
+                      );
+                      if (u) {
+                        await setCurrentUser(u);
+                        router.push("/advertisers/dashboard");
+                      }
+                    })();
                   }}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
                 >
@@ -120,28 +121,19 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const u = storage.getUserById(SAMPLE_IDS.userAffiliate);
-                    if (u) {
-                      setCurrentUser(u);
-                      router.push("/affiliates/campaigns");
-                    }
+                    void (async () => {
+                      const u = await storage.getUserById(
+                        SAMPLE_IDS.userAffiliate,
+                      );
+                      if (u) {
+                        await setCurrentUser(u);
+                        router.push("/affiliates/campaigns");
+                      }
+                    })();
                   }}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
                 >
-                  デモアフィ1（demoaff1）
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const u = storage.getUserById(SAMPLE_IDS.userAffiliate2);
-                    if (u) {
-                      setCurrentUser(u);
-                      router.push("/affiliates/campaigns");
-                    }
-                  }}
-                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-                >
-                  デモアフィ2（demoaff2）
+                  デモアフィ（demoaff1）
                 </button>
               </div>
             </div>
@@ -150,7 +142,7 @@ export default function HomePage() {
       )}
 
       <p className="mt-12 text-sm text-slate-500">
-        ※ 現在は localStorage によるプロトタイプです。データはブラウザ内に保存されます。
+        ※ データは Supabase（Postgres）に保存されます。ログイン状態のみブラウザに保持します。
       </p>
     </main>
   );

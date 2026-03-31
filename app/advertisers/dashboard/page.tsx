@@ -14,13 +14,9 @@ function CampaignEcProductIdEditor({
   onSaved,
 }: {
   campaign: Campaign;
-  onSaved: () => void;
+  onSaved: () => void | Promise<void>;
 }) {
   const [val, setVal] = useState(campaign.externalProductId);
-
-  useEffect(() => {
-    setVal(campaign.externalProductId);
-  }, [campaign.id, campaign.externalProductId]);
 
   return (
     <div className="mt-3 rounded border border-slate-100 bg-slate-50/80 p-3">
@@ -38,8 +34,12 @@ function CampaignEcProductIdEditor({
         <button
           type="button"
           onClick={() => {
-            storage.updateCampaign(campaign.id, { externalProductId: val });
-            onSaved();
+            void (async () => {
+              await storage.updateCampaign(campaign.id, {
+                externalProductId: val,
+              });
+              await onSaved();
+            })();
           }}
           className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
         >
@@ -71,27 +71,30 @@ export default function AdvertisersDashboardPage() {
     "percent"
   );
 
-  const refreshCampaigns = useCallback(() => {
+  const refreshCampaigns = useCallback(async () => {
     const user = getCurrentUser();
     if (user?.advertiser) {
-      setCampaigns(storage.getCampaignsByAdvertiser(user.advertiser.id));
+      const list = await storage.getCampaignsByAdvertiser(user.advertiser.id);
+      setCampaigns(list);
     }
   }, []);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user?.advertiser) {
-      router.replace("/register?type=advertiser");
-      return;
-    }
-    setAdvertiser(user.advertiser);
-    refreshCampaigns();
+    void (async () => {
+      const user = getCurrentUser();
+      if (!user?.advertiser) {
+        router.replace("/register?type=advertiser");
+        return;
+      }
+      setAdvertiser(user.advertiser);
+      await refreshCampaigns();
+    })();
   }, [router, refreshCampaigns]);
 
-  const handleAddCampaign = (e: React.FormEvent) => {
+  const handleAddCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!advertiser || !productId.trim() || !caseName.trim()) return;
-    storage.createCampaign({
+    await storage.createCampaign({
       advertiserId: advertiser.id,
       externalProductId: productId.trim(),
       caseName: caseName.trim(),
@@ -102,7 +105,7 @@ export default function AdvertisersDashboardPage() {
       commissionRate,
       commissionType,
     });
-    refreshCampaigns();
+    await refreshCampaigns();
     setCaseName("");
     setLpUrl("");
     setConversionGoal("purchase");
@@ -318,7 +321,11 @@ export default function AdvertisersDashboardPage() {
                   </span>
                   <span>{formatDate(c.createdAt)}</span>
                 </div>
-                <CampaignEcProductIdEditor campaign={c} onSaved={refreshCampaigns} />
+                <CampaignEcProductIdEditor
+                  key={`${c.id}-${c.externalProductId}`}
+                  campaign={c}
+                  onSaved={refreshCampaigns}
+                />
               </li>
             ))}
           </ul>

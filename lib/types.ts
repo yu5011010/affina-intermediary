@@ -89,3 +89,9 @@ export interface DbSchema {
   campaigns: Campaign[];
   conversions: Conversion[];
 }
+
+/** ログイン中表示用（ユーザー＋広告主/アフィの紐付け） */
+export type CurrentUserProfile = IntermediaryUser & {
+  advertiser?: Advertiser;
+  affiliate?: Affiliate;
+};

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { displayCaseName } from "@/lib/campaignLink";
 import { getCurrentUser, storage } from "@/lib/storage";
-import type { Affiliate, Campaign, Conversion } from "@/lib/types";
+import type { Advertiser, Affiliate, Campaign, Conversion } from "@/lib/types";
 import { formatDateTime, formatYen } from "@/lib/utils";
 
 export default function AffiliatesDashboardPage() {
@@ -13,16 +13,25 @@ export default function AffiliatesDashboardPage() {
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [conversions, setConversions] = useState<Conversion[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user?.affiliate) {
-      router.replace("/register?type=affiliate");
-      return;
-    }
-    setAffiliate(user.affiliate);
-    setConversions(storage.getConversionsByAffiliate(user.affiliate.id));
-    setCampaigns(storage.getCampaigns());
+    void (async () => {
+      const user = getCurrentUser();
+      if (!user?.affiliate) {
+        router.replace("/register?type=affiliate");
+        return;
+      }
+      setAffiliate(user.affiliate);
+      const [conv, camps, advs] = await Promise.all([
+        storage.getConversionsByAffiliate(user.affiliate.id),
+        storage.getCampaigns(),
+        storage.getAdvertisers(),
+      ]);
+      setConversions(conv);
+      setCampaigns(camps);
+      setAdvertisers(advs);
+    })();
   }, [router]);
 
   const totalAmount = useMemo(
@@ -53,17 +62,19 @@ export default function AffiliatesDashboardPage() {
       );
       return;
     }
-    const campaign = campaigns[0];
-    const advertiser = storage.getAdvertisers().find((a) => a.id === campaign.advertiserId);
-    const merchantId = advertiser?.merchantId ?? "test";
-    const conversion = storage.createConversion({
-      affiliateId: affiliate.id,
-      campaignId: campaign.id,
-      externalOrderId: `test-${Date.now()}`,
-      merchantId,
-      amount: Math.floor(Math.random() * 5000) + 500,
-    });
-    setConversions((prev) => [...prev, conversion]);
+    void (async () => {
+      const campaign = campaigns[0];
+      const advertiser = advertisers.find((a) => a.id === campaign.advertiserId);
+      const merchantId = advertiser?.merchantId ?? "test";
+      const conversion = await storage.createConversion({
+        affiliateId: affiliate.id,
+        campaignId: campaign.id,
+        externalOrderId: `test-${Date.now()}`,
+        merchantId,
+        amount: Math.floor(Math.random() * 5000) + 500,
+      });
+      setConversions((prev) => [...prev, conversion]);
+    })();
   };
 
   if (!affiliate) {

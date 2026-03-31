@@ -18,7 +18,7 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    refreshUser();
+    queueMicrotask(() => refreshUser());
     window.addEventListener("affina-user-changed", refreshUser);
     return () => window.removeEventListener("affina-user-changed", refreshUser);
   }, [refreshUser]);
@@ -76,7 +76,7 @@ export function Header() {
 
         <div className="flex items-center gap-3 text-sm">
           <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
-            localStorage プロトタイプ
+            Supabase（Postgres）
           </span>
           {user ? (
             <>

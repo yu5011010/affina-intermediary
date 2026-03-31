@@ -23,7 +23,7 @@ function RegisterForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
@@ -41,63 +41,75 @@ function RegisterForm() {
       return;
     }
 
-    const existingUser = storage.getUsers().find((u) => u.email === email);
-    if (existingUser) {
-      const hasAdvertiser = storage.getAdvertiserByUserId(existingUser.id);
-      const hasAffiliate = storage.getAffiliateByUserId(existingUser.id);
-      if (type === "advertiser" && hasAdvertiser) {
-        setError("このメールアドレスは既に広告主として登録されています");
-        return;
-      }
-      if (type === "affiliate" && hasAffiliate) {
-        setError("このメールアドレスは既にアフィリエイターとして登録されています");
-        return;
-      }
-      if (type === "advertiser" && hasAffiliate) {
-        setError(
-          "このメールアドレスはアフィリエイターとして登録済みです。別のメールで広告主登録してください。"
+    try {
+      const existingUser = await storage.findUserByEmail(email.trim());
+      if (existingUser) {
+        const hasAdvertiser = await storage.getAdvertiserByUserId(
+          existingUser.id,
         );
-        return;
-      }
-      if (type === "affiliate" && hasAdvertiser) {
-        setError(
-          "このメールアドレスは広告主として登録済みです。別のメールでアフィリエイター登録してください。"
+        const hasAffiliate = await storage.getAffiliateByUserId(
+          existingUser.id,
         );
-        return;
+        if (type === "advertiser" && hasAdvertiser) {
+          setError("このメールアドレスは既に広告主として登録されています");
+          return;
+        }
+        if (type === "affiliate" && hasAffiliate) {
+          setError(
+            "このメールアドレスは既にアフィリエイターとして登録されています",
+          );
+          return;
+        }
+        if (type === "advertiser" && hasAffiliate) {
+          setError(
+            "このメールアドレスはアフィリエイターとして登録済みです。別のメールで広告主登録してください。",
+          );
+          return;
+        }
+        if (type === "affiliate" && hasAdvertiser) {
+          setError(
+            "このメールアドレスは広告主として登録済みです。別のメールでアフィリエイター登録してください。",
+          );
+          return;
+        }
       }
-    }
 
-    let user = existingUser;
-    if (!user) {
-      user = storage.createUser({
-        email: email.trim(),
-        displayName: displayName.trim(),
-        role: type,
-      });
-    }
+      let user = existingUser;
+      if (!user) {
+        user = await storage.createUser({
+          email: email.trim(),
+          displayName: displayName.trim(),
+          role: type,
+        });
+      }
 
-    if (type === "advertiser") {
-      storage.createAdvertiser({
-        userId: user.id,
-        siteName: siteName.trim(),
-        siteUrl: siteUrl.trim(),
-      });
-    } else {
-      storage.createAffiliate({
-        userId: user.id,
-        payoutInfo: payoutInfo.trim() || undefined,
-      });
-    }
-
-    setCurrentUser(user);
-    setSuccess("登録が完了しました");
-    setTimeout(() => {
       if (type === "advertiser") {
-        router.push("/advertisers/dashboard");
+        await storage.createAdvertiser({
+          userId: user.id,
+          siteName: siteName.trim(),
+          siteUrl: siteUrl.trim(),
+        });
       } else {
-        router.push("/affiliates/campaigns");
+        await storage.createAffiliate({
+          userId: user.id,
+          payoutInfo: payoutInfo.trim() || undefined,
+        });
       }
-    }, 800);
+
+      await setCurrentUser(user);
+      setSuccess("登録が完了しました");
+      setTimeout(() => {
+        if (type === "advertiser") {
+          router.push("/advertisers/dashboard");
+        } else {
+          router.push("/affiliates/campaigns");
+        }
+      }, 800);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "登録に失敗しました。再試行してください。",
+      );
+    }
   };
 
   return (

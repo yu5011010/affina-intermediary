@@ -27,22 +27,25 @@ export default function AffiliateCampaignDetailPage() {
   const [advertiser, setAdvertiser] = useState<Advertiser | null>(null);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user?.affiliate) {
-      router.replace("/register?type=affiliate");
-      return;
-    }
-    setAffiliate(user.affiliate);
+    void (async () => {
+      const user = getCurrentUser();
+      if (!user?.affiliate) {
+        router.replace("/register?type=affiliate");
+        return;
+      }
+      setAffiliate(user.affiliate);
 
-    const c = storage.getCampaignById(id);
-    if (!c || !c.isActive) {
-      setCampaign(null);
-      setAdvertiser(null);
-      return;
-    }
-    setCampaign(c);
-    const adv = storage.getAdvertisers().find((a) => a.id === c.advertiserId);
-    setAdvertiser(adv ?? null);
+      const c = await storage.getCampaignById(id);
+      if (!c || !c.isActive) {
+        setCampaign(null);
+        setAdvertiser(null);
+        return;
+      }
+      setCampaign(c);
+      const advs = await storage.getAdvertisers();
+      const adv = advs.find((a) => a.id === c.advertiserId);
+      setAdvertiser(adv ?? null);
+    })();
   }, [id, router]);
 
   const affiliateLink = useMemo(() => {

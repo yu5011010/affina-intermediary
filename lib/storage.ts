@@ -6,180 +6,159 @@ import type {
   Campaign,
   Conversion,
   ConversionGoal,
-  DbSchema,
+  CurrentUserProfile,
   IntermediaryUser,
 } from "./types";
-import { buildSampleDb, isDbEmpty } from "./sampleSeed";
-import {
-  generateApiSecret,
-  generateId,
-  generateMerchantId,
-  generateShortCode,
-} from "./utils";
 
-const STORAGE_KEY = "affina_intermediary_db";
 const CURRENT_USER_KEY = "affina_intermediary_current_user";
 
-function emptyDb(): DbSchema {
-  return {
-    users: [],
-    advertisers: [],
-    affiliates: [],
-    campaigns: [],
-    conversions: [],
-  };
-}
-
-function normalizeDb(parsed: unknown): DbSchema {
-  const p = parsed as Partial<DbSchema>;
-  return {
-    users: Array.isArray(p.users) ? p.users : [],
-    advertisers: Array.isArray(p.advertisers) ? p.advertisers : [],
-    affiliates: Array.isArray(p.affiliates) ? p.affiliates : [],
-    campaigns: Array.isArray(p.campaigns) ? p.campaigns : [],
-    conversions: Array.isArray(p.conversions) ? p.conversions : [],
-  };
-}
-
-function getDb(): DbSchema {
-  if (typeof window === "undefined") {
-    return emptyDb();
-  }
-  let db: DbSchema;
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    db = emptyDb();
-  } else {
+async function parseJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = text.trim() || res.statusText || "リクエストに失敗しました";
     try {
-      db = normalizeDb(JSON.parse(raw));
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.length > 0) {
+        msg = j.error;
+      }
     } catch {
-      db = emptyDb();
+      if (text.startsWith("<")) {
+        msg = `サーバーが HTML を返しました（${res.status}）。.env.local の NEXT_PUBLIC_SUPABASE_* やターミナルログを確認してください。`;
+      }
     }
+    throw new Error(`${res.status} ${msg}`);
   }
-  if (isDbEmpty(db)) {
-    db = buildSampleDb();
-    setDb(db);
+  if (!text) {
+    return {} as T;
   }
-  return db;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("API の応答が JSON ではありません");
+  }
 }
 
-function setDb(db: DbSchema): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-}
-
-// ----- 抽象層（将来 Supabase に差し替え可能） -----
+export type CurrentUser = CurrentUserProfile;
 
 export const storage = {
-  getUsers(): IntermediaryUser[] {
-    return getDb().users;
+  async getUserById(id: string): Promise<IntermediaryUser | undefined> {
+    const res = await fetch(`/api/users/${encodeURIComponent(id)}`);
+    if (res.status === 404) {
+      return undefined;
+    }
+    return parseJson<IntermediaryUser>(res);
   },
 
-  getAdvertisers(): Advertiser[] {
-    return getDb().advertisers;
+  async findUserByEmail(
+    email: string,
+  ): Promise<IntermediaryUser | undefined> {
+    const res = await fetch(
+      `/api/users?email=${encodeURIComponent(email)}`,
+    );
+    if (res.status === 404) {
+      return undefined;
+    }
+    return parseJson<IntermediaryUser>(res);
   },
 
-  getAffiliates(): Affiliate[] {
-    return getDb().affiliates;
+  async getAdvertisers(): Promise<Advertiser[]> {
+    return parseJson<Advertiser[]>(await fetch("/api/advertisers"));
   },
 
-  getCampaigns(): Campaign[] {
-    return getDb().campaigns;
+  async getAffiliateByUserId(userId: string): Promise<Affiliate | undefined> {
+    const res = await fetch(
+      `/api/affiliates?userId=${encodeURIComponent(userId)}`,
+    );
+    if (res.status === 404) {
+      return undefined;
+    }
+    return parseJson<Affiliate>(res);
   },
 
-  getConversions(): Conversion[] {
-    return getDb().conversions;
+  async getAdvertiserByUserId(
+    userId: string,
+  ): Promise<Advertiser | undefined> {
+    const res = await fetch(
+      `/api/advertisers?userId=${encodeURIComponent(userId)}`,
+    );
+    if (res.status === 404) {
+      return undefined;
+    }
+    return parseJson<Advertiser>(res);
   },
 
-  getUserById(id: string): IntermediaryUser | undefined {
-    return getDb().users.find((u) => u.id === id);
+  async getCampaigns(): Promise<Campaign[]> {
+    return parseJson<Campaign[]>(await fetch("/api/campaigns"));
   },
 
-  getAdvertiserByUserId(userId: string): Advertiser | undefined {
-    return getDb().advertisers.find((a) => a.userId === userId);
+  async getCampaignsByAdvertiser(advertiserId: string): Promise<Campaign[]> {
+    return parseJson<Campaign[]>(
+      await fetch(
+        `/api/campaigns?advertiserId=${encodeURIComponent(advertiserId)}`,
+      ),
+    );
   },
 
-  getAffiliateByUserId(userId: string): Affiliate | undefined {
-    return getDb().affiliates.find((a) => a.userId === userId);
+  async getCampaignById(id: string): Promise<Campaign | undefined> {
+    const res = await fetch(`/api/campaigns/${encodeURIComponent(id)}`);
+    if (res.status === 404) {
+      return undefined;
+    }
+    return parseJson<Campaign>(res);
   },
 
-  getAffiliateByCode(code: string): Affiliate | undefined {
-    return getDb().affiliates.find((a) => a.affiliateCode === code);
+  async getConversionsByAffiliate(
+    affiliateId: string,
+  ): Promise<Conversion[]> {
+    return parseJson<Conversion[]>(
+      await fetch(
+        `/api/conversions?affiliateId=${encodeURIComponent(affiliateId)}`,
+      ),
+    );
   },
 
-  getCampaignsByAdvertiser(advertiserId: string): Campaign[] {
-    return getDb().campaigns.filter((c) => c.advertiserId === advertiserId);
-  },
-
-  getCampaignById(id: string): Campaign | undefined {
-    return getDb().campaigns.find((c) => c.id === id);
-  },
-
-  getConversionsByAffiliate(affiliateId: string): Conversion[] {
-    return getDb().conversions.filter((c) => c.affiliateId === affiliateId);
-  },
-
-  createUser(data: {
+  async createUser(data: {
     email: string;
     displayName: string;
     role: "advertiser" | "affiliate";
-  }): IntermediaryUser {
-    const db = getDb();
-    const user: IntermediaryUser = {
-      id: generateId(),
-      email: data.email,
-      displayName: data.displayName,
-      role: data.role,
-      createdAt: new Date().toISOString(),
-    };
-    db.users.push(user);
-    setDb(db);
-    return user;
+  }): Promise<IntermediaryUser> {
+    return parseJson<IntermediaryUser>(
+      await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    );
   },
 
-  createAdvertiser(data: {
+  async createAdvertiser(data: {
     userId: string;
     siteName: string;
     siteUrl: string;
-  }): Advertiser {
-    const db = getDb();
-    const advertiser: Advertiser = {
-      id: generateId(),
-      userId: data.userId,
-      merchantId: generateMerchantId(),
-      siteName: data.siteName,
-      siteUrl: data.siteUrl,
-      apiSecret: generateApiSecret(),
-      status: "approved",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    db.advertisers.push(advertiser);
-    setDb(db);
-    return advertiser;
+  }): Promise<Advertiser> {
+    return parseJson<Advertiser>(
+      await fetch("/api/advertisers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    );
   },
 
-  createAffiliate(data: { userId: string; payoutInfo?: string }): Affiliate {
-    const db = getDb();
-    let code = generateShortCode();
-    while (db.affiliates.some((a) => a.affiliateCode === code)) {
-      code = generateShortCode();
-    }
-    const affiliate: Affiliate = {
-      id: generateId(),
-      userId: data.userId,
-      affiliateCode: code,
-      status: "approved",
-      payoutInfo: data.payoutInfo,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    db.affiliates.push(affiliate);
-    setDb(db);
-    return affiliate;
+  async createAffiliate(data: {
+    userId: string;
+    payoutInfo?: string;
+  }): Promise<Affiliate> {
+    return parseJson<Affiliate>(
+      await fetch("/api/affiliates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    );
   },
 
-  createCampaign(data: {
+  async createCampaign(data: {
     advertiserId: string;
     externalProductId: string;
     caseName: string;
@@ -189,120 +168,93 @@ export const storage = {
     productName?: string;
     commissionRate: number;
     commissionType: "percent" | "fixed";
-  }): Campaign {
-    const db = getDb();
-    const campaign: Campaign = {
-      id: generateId(),
-      advertiserId: data.advertiserId,
-      externalProductId: data.externalProductId,
-      caseName: data.caseName.trim(),
-      lpUrl: data.lpUrl?.trim() || undefined,
-      conversionGoal: data.conversionGoal,
-      approvalConditions: data.approvalConditions?.trim() || undefined,
-      productName: data.productName?.trim() || undefined,
-      commissionRate: data.commissionRate,
-      commissionType: data.commissionType,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    db.campaigns.push(campaign);
-    setDb(db);
-    return campaign;
+  }): Promise<Campaign> {
+    return parseJson<Campaign>(
+      await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    );
   },
 
-  updateCampaign(
+  async updateCampaign(
     campaignId: string,
     patch: {
       externalProductId?: string;
       lpUrl?: string | null;
       isActive?: boolean;
     },
-  ): Campaign | null {
-    const db = getDb();
-    const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) {
+  ): Promise<Campaign | null> {
+    const res = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (res.status === 404) {
       return null;
     }
-    const c = { ...db.campaigns[idx] };
-    if (patch.externalProductId !== undefined) {
-      c.externalProductId = patch.externalProductId.trim();
-    }
-    if (patch.lpUrl !== undefined) {
-      const t = patch.lpUrl?.trim();
-      c.lpUrl = t || undefined;
-    }
-    if (patch.isActive !== undefined) {
-      c.isActive = patch.isActive;
-    }
-    c.updatedAt = new Date().toISOString();
-    db.campaigns[idx] = c;
-    setDb(db);
-    return c;
+    return parseJson<Campaign>(res);
   },
 
-  createConversion(data: {
+  async createConversion(data: {
     affiliateId: string;
     campaignId: string;
     externalOrderId: string;
     merchantId: string;
     amount: number;
-  }): Conversion {
-    const db = getDb();
-    const conversion: Conversion = {
-      id: generateId(),
-      affiliateId: data.affiliateId,
-      campaignId: data.campaignId,
-      externalOrderId: data.externalOrderId,
-      merchantId: data.merchantId,
-      amount: data.amount,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    db.conversions.push(conversion);
-    setDb(db);
-    return conversion;
+  }): Promise<Conversion> {
+    return parseJson<Conversion>(
+      await fetch("/api/conversions/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    );
   },
 };
 
-// ----- 現在ログイン中のユーザー（localStorage） -----
-
-export type CurrentUser = IntermediaryUser & {
-  advertiser?: Advertiser;
-  affiliate?: Affiliate;
-};
-
 export function getCurrentUser(): CurrentUser | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
   const raw = localStorage.getItem(CURRENT_USER_KEY);
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   try {
-    const parsed = JSON.parse(raw) as CurrentUser;
-    const db = getDb();
-    const user = db.users.find((u) => u.id === parsed.id);
-    if (!user) return null;
-    const advertiser = db.advertisers.find((a) => a.userId === user.id);
-    const affiliate = db.affiliates.find((a) => a.userId === user.id);
-    return {
-      ...user,
-      advertiser: advertiser ?? undefined,
-      affiliate: affiliate ?? undefined,
-    };
+    return JSON.parse(raw) as CurrentUser;
   } catch {
     return null;
   }
 }
 
-export function setCurrentUser(user: IntermediaryUser | null): void {
-  if (typeof window === "undefined") return;
+export async function setCurrentUser(
+  user: IntermediaryUser | null,
+): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
   if (!user) {
     localStorage.removeItem(CURRENT_USER_KEY);
-  } else {
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    window.dispatchEvent(new CustomEvent("affina-user-changed"));
+    return;
   }
+  const res = await fetch(`/api/users/${encodeURIComponent(user.id)}/current`);
+  if (!res.ok) {
+    localStorage.removeItem(CURRENT_USER_KEY);
+    window.dispatchEvent(new CustomEvent("affina-user-changed"));
+    return;
+  }
+  const full = (await res.json()) as CurrentUser;
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(full));
   window.dispatchEvent(new CustomEvent("affina-user-changed"));
 }
 
 export function logout(): void {
-  setCurrentUser(null);
+  if (typeof window === "undefined") {
+    return;
+  }
+  localStorage.removeItem(CURRENT_USER_KEY);
+  window.dispatchEvent(new CustomEvent("affina-user-changed"));
 }

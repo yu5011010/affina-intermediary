@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { displayCaseName } from "@/lib/campaignLink";
 import { getCurrentUser, storage } from "@/lib/storage";
-import type { Affiliate, Campaign } from "@/lib/types";
+import type { Advertiser, Affiliate, Campaign } from "@/lib/types";
 import { CONVERSION_GOAL_LABELS } from "@/lib/types";
 
 function formatCommission(c: Campaign): string {
@@ -18,20 +18,27 @@ export default function AffiliateCampaignsPage() {
   const router = useRouter();
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user?.affiliate) {
-      router.replace("/register?type=affiliate");
-      return;
-    }
-    setAffiliate(user.affiliate);
-    const all = storage.getCampaigns();
-    setCampaigns(all.filter((c) => c.isActive));
+    void (async () => {
+      const user = getCurrentUser();
+      if (!user?.affiliate) {
+        router.replace("/register?type=affiliate");
+        return;
+      }
+      setAffiliate(user.affiliate);
+      const [all, advs] = await Promise.all([
+        storage.getCampaigns(),
+        storage.getAdvertisers(),
+      ]);
+      setCampaigns(all.filter((c) => c.isActive));
+      setAdvertisers(advs);
+    })();
   }, [router]);
 
   const getAdvertiserName = (advertiserId: string) => {
-    const a = storage.getAdvertisers().find((x) => x.id === advertiserId);
+    const a = advertisers.find((x) => x.id === advertiserId);
     return a?.siteName ?? "不明な広告主";
   };
 
